@@ -1,38 +1,37 @@
 import os
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from telegram.ext import AIORateLimiter
-from telegram.ext.webhook import WebhookUpdate
+from telegram.ext import Application, CommandHandler, ContextTypes, AIORateLimiter
 
 TOKEN = os.environ["TELEGRAM_TOKEN"]
-WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # es: https://tuo-bot.onrender.com
+WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # es: https://nome-app.onrender.com
 
-app = Application.builder() \
+# Crea il bot
+bot_app = Application.builder() \
     .token(TOKEN) \
     .rate_limiter(AIORateLimiter()) \
     .build()
 
-# Comando /start
+# /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Ciao! Il bot è online 🚀")
+    await update.message.reply_text("✅ Bot attivo!")
 
-app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("start", start))
 
-# FastAPI per ricevere i webhook
+# FastAPI app per ricevere webhook
 api = FastAPI()
 
+@api.on_event("startup")
+async def startup():
+    await bot_app.bot.set_webhook(url=f"{WEBHOOK_HOST}/webhook")
+
 @api.get("/")
-def home():
+def root():
     return {"status": "ok"}
 
 @api.post("/webhook")
-async def process_webhook(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, app.bot)
-    await app.process_update(WebhookUpdate(update))
+async def telegram_webhook(req: Request):
+    data = await req.json()
+    update = Update.de_json(data, bot_app.bot)
+    await bot_app.update_queue.put(update)
     return {"ok": True}
-
-@app.on_startup
-async def on_startup():
-    await app.bot.set_webhook(url=f"{WEBHOOK_HOST}/webhook")
